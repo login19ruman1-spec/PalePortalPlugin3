@@ -1,0 +1,45 @@
+name: Build PalePortal
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Compile
+        run: mvn --batch-mode --no-transfer-progress clean package
+
+      - name: Archive source project
+        run: |
+          zip -r PalePortal-sources.zip \
+            .github .gitignore README.md pom.xml src
+
+      - name: Upload plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: PalePortal-plugin
+          path: target/PalePortal-1.0.0.jar
+          if-no-files-found: error
+
+      - name: Upload source project
+        uses: actions/upload-artifact@v4
+        with:
+          name: PalePortal-sources
+          path: PalePortal-sources.zip
+          if-no-files-found: error
