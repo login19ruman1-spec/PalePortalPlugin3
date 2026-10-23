@@ -7,7 +7,7 @@
 
     <groupId>ru.paleforest</groupId>
     <artifactId>PalePortal</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
 
     <properties>
@@ -32,7 +32,7 @@
     </dependencies>
 
     <build>
-        <finalName>PalePortal-1.0.1</finalName>
+        <finalName>PalePortal-1.0.0</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
