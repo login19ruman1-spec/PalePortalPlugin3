@@ -1,0 +1,137 @@
+package ru.paleforest;
+
+import java.util.*;
+import org.bukkit.*;
+import org.bukkit.block.Block;
+import org.bukkit.block.data.type.NoteBlock;
+import org.bukkit.entity.Player;
+import org.bukkit.event.*;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.player.*;
+import ru.paleforest.ConfigManager.Pos;
+
+/**
+ * Handles the five-note portal melody directly from the player's left-click.
+ * We deliberately do not synthesize NotePlayEvent: relying on a nested event
+ * to preserve the author can be fragile with other plugins/listeners.
+ */
+public final class NoteListener implements Listener {
+    private record Attempt(List<Integer> played, long started) {}
+
+    private final PalePortalPlugin plugin;
+    private final Map<UUID, Attempt> attempts = new HashMap<>();
+
+    public NoteListener(PalePortalPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInteract(PlayerInteractEvent event) {
+        if (event.getAction() != Action.LEFT_CLICK_BLOCK
+            || event.getClickedBlock() == null) return;
+
+        Block block = event.getClickedBlock();
+        Player player = event.getPlayer();
+        ConfigManager config = plugin.settings();
+
+        if (!block.getWorld().equals(config.sourceWorld())
+            || !config.musicBlocks().contains(Pos.of(block))
+            || !(block.getBlockData() instanceof NoteBlock noteBlock)) {
+            return;
+        }
+
+        // The configured note block is played by this handler, consistently,
+        // even if another plugin would otherwise interfere with vanilla clicks.
+        event.setCancelled(true);
+        int note = noteBlock.getNote().getId();
+        float pitch = (float) Math.pow(2, (note - 12) / 12.0);
+        block.getWorld().playSound(
+            block.getLocation().add(0.5, 0.5, 0.5),
+            Sound.BLOCK_NOTE_BLOCK_HARP, 1, pitch
+        );
+
+        UUID id = player.getUniqueId();
+        if (!plugin.portal().ready()) {
+            attempts.remove(id);
+            player.sendMessage("Рамка портала не распознана. Проверьте рамку и мир в конфиге.");
+            return;
+        }
+
+        List<Pos> blocks = config.musicBlocks();
+        List<Integer> notes = config.notes();
+        if (blocks.size() != 5 || new HashSet<>(blocks).size() != 5
+            || notes.size() != 5) {
+            attempts.remove(id);
+            player.sendMessage("Настройте пять разных музыкальных блоков и пять нот.");
+            return;
+        }
+
+        Location center = config.frameCenter();
+        double radius = config.raw().getDouble("music.radius", 30.0);
+        if (center == null
+            || block.getLocation().add(0.5, 0.5, 0.5).distanceSquared(center)
+                > radius * radius) {
+            fail(player, "Музыкальный блок дальше допустимого расстояния от портала.");
+            return;
+        }
+
+        long now = System.nanoTime();
+        long timeout = config.raw().getLong("music.timeout-seconds", 30L)
+            * 1_000_000_000L;
+        Attempt attempt = attempts.get(id);
+
+        if (attempt != null && now - attempt.started() > timeout) {
+            attempts.remove(id);
+            attempt = null;
+            player.sendMessage("Время мелодии истекло. Начните заново.");
+        }
+
+        if (attempt == null) {
+            attempt = new Attempt(new ArrayList<>(), now);
+            attempts.put(id, attempt);
+        }
+
+        int index = attempt.played().size();
+        if (index >= 5 || !blocks.get(index).equals(Pos.of(block))
+            || notes.get(index) != note) {
+            fail(player, "Неверная нота или порядок. Мелодия сброшена.");
+            return;
+        }
+
+        attempt.played().add(note);
+        int progress = attempt.played().size();
+        player.sendMessage("Мелодия: " + progress + "/5");
+
+        if (progress == 5) {
+            attempts.remove(id);
+            plugin.portal().unlock(player);
+        }
+    }
+
+    private void fail(Player player, String message) {
+        attempts.remove(player.getUniqueId());
+        player.playSound(
+            player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.7f, 0.6f
+        );
+        player.sendMessage(message);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onBreak(BlockBreakEvent event) {
+        if (event.getPlayer().getGameMode() != GameMode.CREATIVE
+            || event.getPlayer().isSneaking()) return;
+
+        if (event.getBlock().getWorld().equals(
+                plugin.settings().sourceWorld())
+            && plugin.settings().musicBlocks().contains(
+                Pos.of(event.getBlock()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        attempts.remove(event.getPlayer().getUniqueId());
+    }
+}
