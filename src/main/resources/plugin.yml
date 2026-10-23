@@ -1,0 +1,16 @@
+name: PalePortal
+version: 1.0.0
+main: ru.paleforest.PalePortalPlugin
+api-version: '1.21.4'
+description: Музыкальный портал древнего города в Бледный лес.
+
+commands:
+  paleportal:
+    description: Управление порталом Бледного леса
+    aliases: [paleporatl]
+    usage: /paleportal help
+
+permissions:
+  paleportal.admin:
+    description: Настройка портала и спавн скрипунов
+    default: op
